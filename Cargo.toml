@@ -5,7 +5,7 @@ description = "Async Rust client for the Bitvavo REST and WebSocket API"
 documentation = "https://docs.rs/bitvavo-api-client"
 edition = "2024"
 homepage = "https://github.com/dcompoze/bitvavo-api-client"
-keywords = ["bybit", "cryptocurrency", "trading", "api", "websocket"]
+keywords = ["bitvavo", "cryptocurrency", "trading", "api", "websocket"]
 license = "MIT"
 name = "bitvavo-api-client"
 readme = "README.md"
@@ -31,3 +31,4 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 
 [dev-dependencies]
 dotenvy = "0.15"
+proptest = "1"

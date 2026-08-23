@@ -9,6 +9,9 @@
 //! or read from the `BITVAVO_API_KEY` and `BITVAVO_API_SECRET` environment variables.
 
 mod auth;
+#[cfg(test)]
+mod tests;
+
 pub mod error;
 pub mod rest;
 pub mod types;
@@ -27,7 +30,9 @@ pub const DEFAULT_WS_URL: &str = "wss://ws.bitvavo.com/v2/";
 pub const DEFAULT_ACCESS_WINDOW_MS: u64 = 10_000;
 
 /// Configuration shared by the REST and WebSocket clients.
-#[derive(Debug, Clone)]
+///
+/// The `Debug` implementation redacts the API key and secret.
+#[derive(Clone)]
 pub struct ClientConfig {
     pub api_key: Option<String>,
     pub api_secret: Option<String>,
@@ -37,6 +42,22 @@ pub struct ClientConfig {
     pub access_window_ms: u64,
     /// HTTP request timeout.
     pub timeout: Duration,
+}
+
+impl std::fmt::Debug for ClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientConfig")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field(
+                "api_secret",
+                &self.api_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("rest_url", &self.rest_url)
+            .field("ws_url", &self.ws_url)
+            .field("access_window_ms", &self.access_window_ms)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 impl Default for ClientConfig {

@@ -16,6 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 /// Event received from the WebSocket connection.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum WsEvent {
     /// Authentication succeeded.
     Authenticated,
@@ -206,6 +207,12 @@ impl WsClient {
     }
 }
 
+impl Drop for WsClient {
+    fn drop(&mut self) {
+        let _ = self.cmd_tx.send(Command::Close);
+    }
+}
+
 /// Parses a raw text message into a typed event.
 fn parse_event(text: &str) -> WsEvent {
     let value: serde_json::Value = match serde_json::from_str(text) {
@@ -312,6 +319,51 @@ mod tests {
                 assert_eq!(response["market"], "BTC-EUR");
             }
             other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    mod fuzz {
+        use super::*;
+        use crate::tests::arb_json;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn parse_event_never_panics_on_arbitrary_text(text in "\\PC*") {
+                let _ = parse_event(&text);
+            }
+
+            #[test]
+            fn parse_event_never_panics_on_arbitrary_json(value in arb_json()) {
+                let _ = parse_event(&value.to_string());
+            }
+
+            #[test]
+            fn parse_event_never_panics_on_known_events_with_arbitrary_payload(
+                event in prop_oneof![
+                    Just("authenticate"),
+                    Just("subscribed"),
+                    Just("unsubscribed"),
+                    Just("ticker"),
+                    Just("ticker24h"),
+                    Just("candle"),
+                    Just("trade"),
+                    Just("book"),
+                    Just("order"),
+                    Just("fill"),
+                ],
+                payload in arb_json(),
+            ) {
+                let mut object = serde_json::Map::new();
+                object.insert("event".to_string(), serde_json::Value::from(event));
+                object.insert("data".to_string(), payload.clone());
+                if let serde_json::Value::Object(map) = &payload {
+                    for (key, value) in map {
+                        object.insert(key.clone(), value.clone());
+                    }
+                }
+                let _ = parse_event(&serde_json::Value::Object(object).to_string());
+            }
         }
     }
 

@@ -554,6 +554,32 @@ mod tests {
         assert_eq!(candle.volume, "4.14");
     }
 
+    mod fuzz {
+        use super::*;
+        use crate::tests::arb_json;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn candle_deserialize_never_panics(value in arb_json()) {
+                let _ = serde_json::from_value::<Candle>(value);
+            }
+
+            #[test]
+            fn candle_deserializes_valid_arrays(
+                timestamp in any::<u64>(),
+                fields in proptest::collection::vec("[0-9]{1,12}(\\.[0-9]{1,8})?", 5),
+            ) {
+                let json = serde_json::json!([
+                    timestamp, fields[0], fields[1], fields[2], fields[3], fields[4]
+                ]);
+                let candle: Candle = serde_json::from_value(json).unwrap();
+                prop_assert_eq!(candle.timestamp, timestamp);
+                prop_assert_eq!(&candle.volume, &fields[4]);
+            }
+        }
+    }
+
     #[test]
     fn side_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Side::Buy).unwrap(), "\"buy\"");

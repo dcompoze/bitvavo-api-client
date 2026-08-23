@@ -445,6 +445,23 @@ impl WithdrawalRequest {
 /// Query string pairs for an endpoint.
 type Query = Vec<(String, String)>;
 
+/// Percent-encodes everything outside the RFC 3986 unreserved set.
+/// The signature is computed over the encoded path, so the signed string
+/// always matches the URL that is sent.
+/// Encoding is the identity for valid Bitvavo symbols and identifiers.
+fn encode_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
 /// Serializes a params struct into query string pairs.
 fn to_query<P: Serialize>(params: &P) -> Result<Query> {
     let value = serde_json::to_value(params)?;
@@ -532,7 +549,10 @@ impl RestClient {
     ) -> Result<T> {
         let mut path_with_query = path.to_string();
         if !query.is_empty() {
-            let joined: Vec<String> = query.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            let joined: Vec<String> = query
+                .iter()
+                .map(|(k, v)| format!("{k}={}", encode_component(v)))
+                .collect();
             path_with_query.push('?');
             path_with_query.push_str(&joined.join("&"));
         }
@@ -626,7 +646,8 @@ impl RestClient {
         if let Some(depth) = depth {
             query.push(("depth".into(), depth.to_string()));
         }
-        self.get(&format!("/{market}/book"), query).await
+        self.get(&format!("/{}/book", encode_component(market)), query)
+            .await
     }
 
     /// `GET /{market}/trades`. Returns public trades for a market.
@@ -635,8 +656,11 @@ impl RestClient {
         market: &str,
         params: &TradesParams,
     ) -> Result<Vec<PublicTrade>> {
-        self.get(&format!("/{market}/trades"), to_query(params)?)
-            .await
+        self.get(
+            &format!("/{}/trades", encode_component(market)),
+            to_query(params)?,
+        )
+        .await
     }
 
     /// `GET /{market}/candles`. Returns OHLCV candles for a market.
@@ -649,7 +673,8 @@ impl RestClient {
     ) -> Result<Vec<Candle>> {
         let mut query = vec![("interval".to_string(), interval.to_string())];
         query.extend(to_query(params)?);
-        self.get(&format!("/{market}/candles"), query).await
+        self.get(&format!("/{}/candles", encode_component(market)), query)
+            .await
     }
 
     /// `GET /ticker/price`. Returns the latest price for all markets.
@@ -839,6 +864,17 @@ impl RestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_component_is_identity_for_symbols() {
+        assert_eq!(encode_component("BTC-EUR"), "BTC-EUR");
+        assert_eq!(encode_component("abc123_.~"), "abc123_.~");
+    }
+
+    #[test]
+    fn encode_component_escapes_reserved_bytes() {
+        assert_eq!(encode_component("a b/c?d&e=f"), "a%20b%2Fc%3Fd%26e%3Df");
+    }
 
     #[test]
     fn to_query_skips_none_fields() {

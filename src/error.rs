@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors produced by the REST and WebSocket clients.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum Error {
     /// Transport-level HTTP failure.
     #[error("http request failed: {0}")]
