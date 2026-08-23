@@ -4,8 +4,8 @@
 //! Private tests run only when `BITVAVO_API_KEY` and `BITVAVO_API_SECRET`
 //! are set in the environment or in a `.env` file.
 
-use bitvavo_client::ClientConfig;
-use bitvavo_client::rest::{CandlesParams, RestClient, TradesParams};
+use bitvavo_api_client::ClientConfig;
+use bitvavo_api_client::rest::{CandlesParams, RestClient, TradesParams};
 
 fn public_client() -> RestClient {
     RestClient::public().expect("client construction")
@@ -104,7 +104,7 @@ async fn get_ticker_24h() {
 async fn unknown_market_returns_api_error() {
     let result = public_client().ticker_price("NOPE-NOPE").await;
     match result {
-        Err(bitvavo_client::Error::Api { code, .. }) => assert!(code > 0),
+        Err(bitvavo_api_client::Error::Api { code, .. }) => assert!(code > 0),
         other => panic!("expected api error, got {other:?}"),
     }
 }

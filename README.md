@@ -1,4 +1,4 @@
-# bitvavo-client
+# bitvavo-api-client
 
 A Rust client library for the [Bitvavo API](https://docs.bitvavo.com/):
 
@@ -15,7 +15,7 @@ A Rust client library for the [Bitvavo API](https://docs.bitvavo.com/):
 Public REST API client:
 
 ```rust
-use bitvavo_client::rest::{CandlesParams, RestClient};
+use bitvavo_api_client::rest::{CandlesParams, RestClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,8 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Authenticated client:
 
 ```rust
-use bitvavo_client::rest::{OrderRequest, RestClient};
-use bitvavo_client::{ClientConfig, Side};
+use bitvavo_api_client::rest::{OrderRequest, RestClient};
+use bitvavo_api_client::{ClientConfig, Side};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 WebSocket public channels:
 
 ```rust
-use bitvavo_client::ws::{WsClient, WsEvent};
+use bitvavo_api_client::ws::{WsClient, WsEvent};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -98,8 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 WebSocket private channel:
 
 ```rust
-use bitvavo_client::ws::{WsClient, WsEvent};
-use bitvavo_client::ClientConfig;
+use bitvavo_api_client::ws::{WsClient, WsEvent};
+use bitvavo_api_client::ClientConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -171,7 +171,7 @@ Reconnect with `WsClient::connect` and resubscribe when this happens.
 ## Configuration
 
 ```rust
-use bitvavo_client::ClientConfig;
+use bitvavo_api_client::ClientConfig;
 use std::time::Duration;
 
 let config = ClientConfig::with_credentials("api_key", "api_secret")

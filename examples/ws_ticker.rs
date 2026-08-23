@@ -2,7 +2,7 @@
 //!
 //! Run with `cargo run --example ws_ticker`.
 
-use bitvavo_client::ws::{WsClient, WsEvent};
+use bitvavo_api_client::ws::{WsClient, WsEvent};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

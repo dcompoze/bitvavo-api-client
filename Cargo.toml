@@ -1,24 +1,32 @@
 [package]
-name = "bitvavo-client"
-version = "0.1.0"
-edition = "2024"
+authors = ["dcompoze"]
+categories = ["api-bindings", "asynchronous", "web-programming"]
 description = "Async Rust client for the Bitvavo REST and WebSocket API"
+documentation = "https://docs.rs/bitvavo-api-client"
+edition = "2024"
+homepage = "https://github.com/dcompoze/bitvavo-api-client"
+keywords = ["bybit", "cryptocurrency", "trading", "api", "websocket"]
 license = "MIT"
+name = "bitvavo-api-client"
+readme = "README.md"
+repository = "https://github.com/dcompoze/bitvavo-api-client"
+rust-version = "1.85"
+version = "0.1.0"
 
 [lib]
+name = "bitvavo_api_client"
 path = "src/lib.rs"
-name = "bitvavo_client"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+futures = "0.3"
+hex = "0.4"
+hmac = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "2"
-futures = "0.3"
-hmac = "0.12"
 sha2 = "0.10"
-hex = "0.4"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 
 [dev-dependencies]

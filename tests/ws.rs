@@ -2,7 +2,7 @@
 //!
 //! These tests run against the live WebSocket API and need network access.
 
-use bitvavo_client::ws::{WsClient, WsEvent};
+use bitvavo_api_client::ws::{WsClient, WsEvent};
 use std::time::Duration;
 use tokio::time::timeout;
 

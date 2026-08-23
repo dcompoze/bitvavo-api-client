@@ -2,7 +2,7 @@
 //!
 //! Run with `cargo run --example market_data`.
 
-use bitvavo_client::rest::{CandlesParams, RestClient};
+use bitvavo_api_client::rest::{CandlesParams, RestClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

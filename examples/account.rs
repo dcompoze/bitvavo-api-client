@@ -3,7 +3,7 @@
 //! Set `BITVAVO_API_KEY` and `BITVAVO_API_SECRET` in the environment
 //! or in a `.env` file, then run with `cargo run --example account`.
 
-use bitvavo_client::rest::RestClient;
+use bitvavo_api_client::rest::RestClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
