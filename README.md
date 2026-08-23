@@ -200,13 +200,3 @@ cargo run --example market_data   # Public REST market data
 cargo run --example account      # Private REST account data
 cargo run --example ws_ticker    # Live tickers and trades over WebSocket
 ```
-
-## Tests
-
-```bash
-cargo test --lib                 # Unit tests, no network access needed
-cargo test --test rest --test ws # Integration tests against the live API
-```
-
-Private integration tests run only when API credentials are present.
-They are skipped otherwise.
