@@ -490,6 +490,13 @@ pub struct RestClient {
 impl RestClient {
     /// Creates a client from a configuration.
     pub fn new(config: ClientConfig) -> Result<Self> {
+        crate::validate_transport_url(
+            &config.rest_url,
+            "REST",
+            "https",
+            "http",
+            config.allow_insecure_transport,
+        )?;
         let http = reqwest::Client::builder().timeout(config.timeout).build()?;
         Ok(Self {
             http,

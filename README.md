@@ -10,6 +10,17 @@ A Rust client library for the [Bitvavo API](https://docs.bitvavo.com/):
 - Rate limit visibility from response headers
 - Amounts and prices kept as strings to preserve exact decimal values
 
+## TLS backends
+
+The default `rustls-tls` feature uses rustls with the operating system certificate store for HTTPS and WSS connections.
+
+To use the platform-native TLS implementation, disable default features and enable `native-tls`:
+
+```toml
+[dependencies]
+bitvavo-api-client = { version = "0.1", default-features = false, features = ["native-tls"] }
+```
+
 ## Library
 
 Public REST API client:
@@ -165,6 +176,7 @@ WebSocket channels:
 - `account` - Order and fill updates for your account (requires authentication)
 
 The WebSocket client does not reconnect on its own.
+A `WsEvent::ConnectionError` reports a transport or TLS failure.
 A `WsEvent::Closed` event signals that the connection ended.
 Reconnect with `WsClient::connect` and resubscribe when this happens.
 
@@ -176,10 +188,13 @@ use std::time::Duration;
 
 let config = ClientConfig::with_credentials("api_key", "api_secret")
     .access_window_ms(10_000)                  // Signed request validity window
-    .timeout(Duration::from_secs(30))          // HTTP request timeout
+    .timeout(Duration::from_secs(30))          // HTTP and WebSocket connection timeout
     .rest_url("https://api.bitvavo.com/v2")    // REST base URL override
     .ws_url("wss://ws.bitvavo.com/v2/");       // WebSocket URL override
 ```
+
+The client rejects unencrypted `http` and `ws` URLs by default.
+Local tests can opt in with `.danger_allow_insecure_transport(true)`.
 
 ## Environment variables
 

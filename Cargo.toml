@@ -11,23 +11,35 @@ name = "bitvavo-api-client"
 readme = "README.md"
 repository = "https://github.com/dcompoze/bitvavo-api-client"
 rust-version = "1.85"
-version = "0.1.0"
+version = "0.2.0"
 
 [lib]
 name = "bitvavo_api_client"
 path = "src/lib.rs"
 
+[package.metadata.docs.rs]
+features = ["rustls-tls"]
+no-default-features = true
+
+[features]
+default = ["rustls-tls"]
+native-tls = ["reqwest/native-tls", "tokio-tungstenite/native-tls"]
+rustls-tls = [
+    "reqwest/rustls-tls-native-roots",
+    "tokio-tungstenite/rustls-tls-native-roots",
+]
+
 [dependencies]
 futures = "0.3"
 hex = "0.4"
 hmac = "0.12"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect"] }
 
 [dev-dependencies]
 dotenvy = "0.15"

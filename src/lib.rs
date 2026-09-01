@@ -8,6 +8,12 @@
 //! Private endpoints require an API key and secret, either passed directly
 //! or read from the `BITVAVO_API_KEY` and `BITVAVO_API_SECRET` environment variables.
 
+#[cfg(all(feature = "native-tls", feature = "rustls-tls"))]
+compile_error!("features `native-tls` and `rustls-tls` cannot be enabled together");
+
+#[cfg(not(any(feature = "native-tls", feature = "rustls-tls")))]
+compile_error!("enable either the `native-tls` or `rustls-tls` feature");
+
 mod auth;
 #[cfg(test)]
 mod tests;
@@ -40,8 +46,12 @@ pub struct ClientConfig {
     pub ws_url: String,
     /// Time in milliseconds during which a signed request stays valid.
     pub access_window_ms: u64,
-    /// HTTP request timeout.
+    /// HTTP request and WebSocket connection timeout.
     pub timeout: Duration,
+    /// Allows unencrypted `http` and `ws` URLs.
+    ///
+    /// This option is intended only for local testing.
+    pub allow_insecure_transport: bool,
 }
 
 impl std::fmt::Debug for ClientConfig {
@@ -56,6 +66,7 @@ impl std::fmt::Debug for ClientConfig {
             .field("ws_url", &self.ws_url)
             .field("access_window_ms", &self.access_window_ms)
             .field("timeout", &self.timeout)
+            .field("allow_insecure_transport", &self.allow_insecure_transport)
             .finish()
     }
 }
@@ -69,6 +80,7 @@ impl Default for ClientConfig {
             ws_url: DEFAULT_WS_URL.to_string(),
             access_window_ms: DEFAULT_ACCESS_WINDOW_MS,
             timeout: Duration::from_secs(30),
+            allow_insecure_transport: false,
         }
     }
 }
@@ -123,9 +135,17 @@ impl ClientConfig {
         self
     }
 
-    /// Sets the HTTP request timeout.
+    /// Sets the HTTP request and WebSocket connection timeout.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    /// Allows unencrypted `http` and `ws` URLs.
+    ///
+    /// Enabling this can expose API credentials and must only be used for local testing.
+    pub fn danger_allow_insecure_transport(mut self, allow: bool) -> Self {
+        self.allow_insecure_transport = allow;
         self
     }
 
@@ -139,5 +159,88 @@ impl ClientConfig {
             (Some(key), Some(secret)) => Ok((key, secret)),
             _ => Err(Error::MissingCredentials),
         }
+    }
+}
+
+pub(crate) fn validate_transport_url(
+    url: &str,
+    transport: &'static str,
+    secure_scheme: &'static str,
+    insecure_scheme: &'static str,
+    allow_insecure: bool,
+) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| Error::InvalidUrl { transport })?;
+    let scheme = parsed.scheme();
+
+    if scheme == secure_scheme || allow_insecure && scheme == insecure_scheme {
+        return Ok(());
+    }
+
+    Err(Error::InsecureTransport {
+        transport,
+        required_scheme: secure_scheme,
+    })
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_secure_transport_urls() {
+        assert!(
+            validate_transport_url("https://example.com", "REST", "https", "http", false).is_ok()
+        );
+        assert!(
+            validate_transport_url("wss://example.com", "WebSocket", "wss", "ws", false).is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_unencrypted_transport_urls() {
+        assert!(matches!(
+            validate_transport_url("http://example.com", "REST", "https", "http", false),
+            Err(Error::InsecureTransport { .. })
+        ));
+        assert!(matches!(
+            validate_transport_url("ws://example.com", "WebSocket", "wss", "ws", false),
+            Err(Error::InsecureTransport { .. })
+        ));
+    }
+
+    #[test]
+    fn permits_explicit_insecure_transport() {
+        assert!(validate_transport_url("http://127.0.0.1", "REST", "https", "http", true).is_ok());
+        assert!(validate_transport_url("ws://127.0.0.1", "WebSocket", "wss", "ws", true).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_and_unsupported_urls() {
+        assert!(matches!(
+            validate_transport_url("not a URL", "REST", "https", "http", false),
+            Err(Error::InvalidUrl { .. })
+        ));
+        assert!(matches!(
+            validate_transport_url("ftp://example.com", "REST", "https", "http", true),
+            Err(Error::InsecureTransport { .. })
+        ));
+    }
+
+    #[test]
+    fn rest_client_rejects_unencrypted_url() {
+        let config = ClientConfig::new().rest_url("http://example.com");
+        assert!(matches!(
+            rest::RestClient::new(config),
+            Err(Error::InsecureTransport { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn websocket_client_rejects_unencrypted_url() {
+        let config = ClientConfig::new().ws_url("ws://example.com");
+        assert!(matches!(
+            ws::WsClient::connect(config).await,
+            Err(Error::InsecureTransport { .. })
+        ));
     }
 }

@@ -10,9 +10,22 @@ use crate::error::{Error, Result};
 use crate::types::*;
 use futures::{SinkExt, StreamExt};
 use serde_json::json;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::Message;
+
+/// Operation that caused a WebSocket connection error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WsConnectionOperation {
+    /// Reading a message from the server.
+    Read,
+    /// Writing a message to the server.
+    Write,
+}
 
 /// Event received from the WebSocket connection.
 #[derive(Debug, Clone)]
@@ -45,6 +58,11 @@ pub enum WsEvent {
     },
     /// Error message from the server.
     Error { code: i64, message: String },
+    /// Transport or TLS error on an established connection.
+    ConnectionError {
+        operation: WsConnectionOperation,
+        error: Arc<TungsteniteError>,
+    },
     /// The connection was closed and no further events will arrive.
     Closed,
     /// A message that did not match any known shape.
@@ -53,7 +71,6 @@ pub enum WsEvent {
 
 enum Command {
     Send(String),
-    Pong(Vec<u8>),
     Close,
 }
 
@@ -71,42 +88,73 @@ pub struct WsClient {
 impl WsClient {
     /// Opens a connection and returns the client handle and the event stream.
     pub async fn connect(config: ClientConfig) -> Result<(Self, mpsc::UnboundedReceiver<WsEvent>)> {
-        let (stream, _) = connect_async(&config.ws_url).await?;
+        crate::validate_transport_url(
+            &config.ws_url,
+            "WebSocket",
+            "wss",
+            "ws",
+            config.allow_insecure_transport,
+        )?;
+        let (stream, _) = timeout(config.timeout, connect_async(&config.ws_url))
+            .await
+            .map_err(|_| Error::WebSocketConnectTimeout(config.timeout))??;
         let (mut write, mut read) = stream.split();
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
         let (event_tx, event_rx) = mpsc::unbounded_channel::<WsEvent>();
 
         tokio::spawn(async move {
-            while let Some(cmd) = cmd_rx.recv().await {
-                let result = match cmd {
-                    Command::Send(text) => write.send(Message::Text(text.into())).await,
-                    Command::Pong(payload) => write.send(Message::Pong(payload.into())).await,
-                    Command::Close => {
-                        let _ = write.send(Message::Close(None)).await;
-                        break;
-                    }
-                };
-                if result.is_err() {
-                    break;
-                }
-            }
-        });
-
-        let pong_tx = cmd_tx.clone();
-        tokio::spawn(async move {
-            while let Some(message) = read.next().await {
-                match message {
-                    Ok(Message::Text(text)) => {
-                        let event = parse_event(&text);
-                        if event_tx.send(event).is_err() {
+            loop {
+                tokio::select! {
+                    command = cmd_rx.recv() => {
+                        let Some(command) = command else {
+                            break;
+                        };
+                        let (result, should_close) = match command {
+                            Command::Send(text) => {
+                                (write.send(Message::Text(text.into())).await, false)
+                            }
+                            Command::Close => {
+                                (write.send(Message::Close(None)).await, true)
+                            }
+                        };
+                        if let Err(error) = result {
+                            let _ = event_tx.send(WsEvent::ConnectionError {
+                                operation: WsConnectionOperation::Write,
+                                error: Arc::new(error),
+                            });
+                            break;
+                        }
+                        if should_close {
                             break;
                         }
                     }
-                    Ok(Message::Ping(payload)) => {
-                        let _ = pong_tx.send(Command::Pong(payload.to_vec()));
+                    message = read.next() => {
+                        match message {
+                            Some(Ok(Message::Text(text))) => {
+                                if event_tx.send(parse_event(&text)).is_err() {
+                                    break;
+                                }
+                            }
+                            Some(Ok(Message::Ping(payload))) => {
+                                if let Err(error) = write.send(Message::Pong(payload)).await {
+                                    let _ = event_tx.send(WsEvent::ConnectionError {
+                                        operation: WsConnectionOperation::Write,
+                                        error: Arc::new(error),
+                                    });
+                                    break;
+                                }
+                            }
+                            Some(Ok(Message::Close(_))) | None => break,
+                            Some(Err(error)) => {
+                                let _ = event_tx.send(WsEvent::ConnectionError {
+                                    operation: WsConnectionOperation::Read,
+                                    error: Arc::new(error),
+                                });
+                                break;
+                            }
+                            Some(Ok(_)) => {}
+                        }
                     }
-                    Ok(Message::Close(_)) | Err(_) => break,
-                    Ok(_) => {}
                 }
             }
             let _ = event_tx.send(WsEvent::Closed);
@@ -284,6 +332,53 @@ fn parse_event(text: &str) -> WsEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn connection_timeout_is_reported() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let _connection = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let config = ClientConfig::new()
+            .ws_url(format!("ws://{address}"))
+            .timeout(Duration::from_millis(50))
+            .danger_allow_insecure_transport(true);
+
+        let result = WsClient::connect(config).await;
+        server.abort();
+
+        assert!(matches!(result, Err(Error::WebSocketConnectTimeout(_))));
+    }
+
+    #[tokio::test]
+    async fn established_connection_error_is_reported_before_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            drop(socket);
+        });
+        let config = ClientConfig::new()
+            .ws_url(format!("ws://{address}"))
+            .danger_allow_insecure_transport(true);
+
+        let (_client, mut events) = WsClient::connect(config).await.unwrap();
+        server.await.unwrap();
+
+        assert!(matches!(
+            events.recv().await,
+            Some(WsEvent::ConnectionError {
+                operation: WsConnectionOperation::Read,
+                ..
+            })
+        ));
+        assert!(matches!(events.recv().await, Some(WsEvent::Closed)));
+    }
 
     #[test]
     fn parse_ticker_event() {
